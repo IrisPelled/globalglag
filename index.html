@@ -1,0 +1,271 @@
+<html><head><base href="https://flagstudy.example.com/">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Global Flag Study - Interactive World Map in Space</title>
+<style>
+  body {
+    font-family: Arial, sans-serif;
+    margin: 0;
+    padding: 0;
+    background: linear-gradient(135deg, #000033, #4B0082);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    color: white;
+    overflow: hidden;
+  }
+  .container {
+    text-align: center;
+  }
+  #globe {
+    width: 700px;
+    height: 700px;
+  }
+  #controls {
+    margin-top: 20px;
+  }
+  button {
+    font-size: 18px;
+    margin: 0 10px;
+    padding: 10px 20px;
+    cursor: pointer;
+    background-color: rgba(255, 255, 255, 0.2);
+    color: white;
+    border: none;
+    border-radius: 5px;
+    transition: background-color 0.3s;
+  }
+  button:hover {
+    background-color: rgba(255, 255, 255, 0.3);
+  }
+  #flag-container {
+    margin-top: 20px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
+  #flag {
+    max-width: 200px;
+    max-height: 120px;
+    border: 1px solid #ccc;
+  }
+  #country-info {
+    margin-left: 20px;
+    text-align: left;
+  }
+  #country-name {
+    font-size: 24px;
+    margin-bottom: 10px;
+  }
+  #population {
+    font-size: 18px;
+  }
+  .stars {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+  }
+</style>
+</head>
+<body>
+  <div class="stars"></div>
+  <div class="container">
+    <div id="globe"></div>
+    <div id="controls">
+      <button id="left">←</button>
+      <button id="right">→</button>
+      <button id="up">↑</button>
+      <button id="down">↓</button>
+    </div>
+    <div id="flag-container">
+      <img id="flag" alt="Selected country flag">
+      <div id="country-info">
+        <div id="country-name"></div>
+        <div id="population"></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://d3js.org/d3.v6.min.js"></script>
+  <script src="https://d3js.org/topojson.v3.min.js"></script>
+  <script>
+    const width = 700;
+    const height = 700;
+    let rotation = [0, 0];
+    const sensitivity = 75;
+
+    const svg = d3.select("#globe")
+      .append("svg")
+      .attr("width", width)
+      .attr("height", height);
+
+    const projection = d3.geoOrthographic()
+      .scale(340)
+      .center([0, 0])
+      .rotate(rotation)
+      .translate([width / 2, height / 2]);
+
+    const initialScale = projection.scale();
+    const path = d3.geoPath().projection(projection);
+
+    // Define gradients for a more realistic ocean
+    const defs = svg.append("defs");
+
+    const oceanGradient = defs.append("radialGradient")
+      .attr("id", "oceanGradient")
+      .attr("cx", "75%")
+      .attr("cy", "25%");
+
+    oceanGradient.append("stop")
+      .attr("offset", "5%")
+      .attr("stop-color", "#47b")
+
+    oceanGradient.append("stop")
+      .attr("offset", "100%")
+      .attr("stop-color", "#137")
+
+    // Add the ocean circle
+    const globe = svg.append("circle")
+      .attr("fill", "url(#oceanGradient)")
+      .attr("stroke", "#000")
+      .attr("stroke-width", "0.2")
+      .attr("cx", width/2)
+      .attr("cy", height/2)
+      .attr("r", initialScale);
+
+    // Add a subtle specular highlight
+    const highlight = svg.append("circle")
+      .attr("cx", width/2)
+      .attr("cy", height/2)
+      .attr("r", initialScale)
+      .attr("fill", "url(#oceanGradient)")
+      .attr("opacity", 0.3)
+      .attr("filter", "url(#glow)");
+
+    // Add glow filter
+    const filter = defs.append("filter")
+      .attr("id", "glow");
+
+    filter.append("feGaussianBlur")
+      .attr("stdDeviation", "5")
+      .attr("result", "coloredBlur");
+
+    const feMerge = filter.append("feMerge");
+    feMerge.append("feMergeNode")
+      .attr("in", "coloredBlur");
+    feMerge.append("feMergeNode")
+      .attr("in", "SourceGraphic");
+
+    let selectedCountry = null;
+
+    function loadGlobe() {
+      d3.json("https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json")
+        .then(data => {
+          const countries = topojson.feature(data, data.objects.countries);
+
+          svg.selectAll(".country")
+            .data(countries.features)
+            .enter().append("path")
+            .attr("class", "country")
+            .attr("d", path)
+            .attr("fill", "#D2B48C")
+            .attr("stroke", "#FFFFFF")
+            .attr("stroke-width", "0.5")
+            .on("click", handleCountryClick);
+
+          rotateGlobe();
+        });
+    }
+
+    function rotateGlobe() {
+      projection.rotate(rotation);
+      svg.selectAll("path").attr("d", path);
+    }
+
+    function handleCountryClick(event, d) {
+      if (selectedCountry) {
+        d3.select(selectedCountry).attr("fill", "#D2B48C");
+      }
+      selectedCountry = event.target;
+      d3.select(selectedCountry).attr("fill", "#FF69B4");
+
+      const countryName = d.properties.name;
+      document.getElementById("country-name").textContent = countryName;
+
+      fetch(`https://restcountries.com/v3.1/name/${countryName}`)
+        .then(response => response.json())
+        .then(data => {
+          if (data && data[0]) {
+            const country = data[0];
+            if (country.flags) {
+              const flagUrl = country.flags.png;
+              document.getElementById("flag").src = flagUrl;
+              document.getElementById("flag").alt = `Flag of ${countryName}`;
+            }
+            if (country.population) {
+              const population = country.population.toLocaleString();
+              document.getElementById("population").textContent = `Population: ${population}`;
+            }
+          }
+        })
+        .catch(error => console.error("Error fetching country data:", error));
+    }
+
+    document.getElementById("left").addEventListener("click", () => {
+      rotation[0] += 10;
+      rotateGlobe();
+    });
+
+    document.getElementById("right").addEventListener("click", () => {
+      rotation[0] -= 10;
+      rotateGlobe();
+    });
+
+    document.getElementById("up").addEventListener("click", () => {
+      rotation[1] -= 10;
+      rotateGlobe();
+    });
+
+    document.getElementById("down").addEventListener("click", () => {
+      rotation[1] += 10;
+      rotateGlobe();
+    });
+
+    loadGlobe();
+
+    // Add twinkling stars
+    function createStars() {
+      const starCount = 200;
+      const starsContainer = document.querySelector('.stars');
+      
+      for (let i = 0; i < starCount; i++) {
+        const star = document.createElement('div');
+        star.className = 'star';
+        star.style.cssText = `
+          position: absolute;
+          width: 2px;
+          height: 2px;
+          background: white;
+          border-radius: 50%;
+          top: ${Math.random() * 100}%;
+          left: ${Math.random() * 100}%;
+          animation: twinkle ${Math.random() * 5 + 5}s linear infinite;
+        `;
+        starsContainer.appendChild(star);
+      }
+    }
+
+    createStars();
+  </script>
+  <style>
+    @keyframes twinkle {
+      0% { opacity: 0; }
+      50% { opacity: 1; }
+      100% { opacity: 0; }
+    }
+  </style>
+</body></html>
